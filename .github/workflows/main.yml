@@ -1,9 +1,12 @@
-name: Bot Saham Genius
+name: Bot Saham Pro
 
 on:
   schedule:
-    - cron: '30 9 * * 1-5' # Berjalan jam 16:30 WIB (09:30 UTC) Senin-Jumat
-  workflow_dispatch:       # Tombol untuk menjalankan manual kapan saja
+    # Jam 09:15 WIB (02:15 UTC) -> Untuk Sinyal Pembukaan
+    - cron: '15 2 * * 1-5' 
+    # Jam 16:30 WIB (09:30 UTC) -> Untuk Sinyal Penutupan
+    - cron: '30 9 * * 1-5'
+  workflow_dispatch:
 
 jobs:
   run-bot:
