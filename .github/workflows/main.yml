@@ -1,0 +1,27 @@
+name: Bot Saham Genius
+
+on:
+  schedule:
+    - cron: '30 9 * * 1-5' # Berjalan jam 16:30 WIB (09:30 UTC) Senin-Jumat
+  workflow_dispatch:       # Tombol untuk menjalankan manual kapan saja
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: pip install -r requirements.txt
+
+      - name: Jalankan Bot
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python main.py
