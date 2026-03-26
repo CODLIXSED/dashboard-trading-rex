@@ -2,10 +2,8 @@ name: Bot Saham Pro
 
 on:
   schedule:
-    # Jam 09:15 WIB (02:15 UTC) -> Untuk Sinyal Pembukaan
-    - cron: '15 2 * * 1-5' 
-    # Jam 16:30 WIB (09:30 UTC) -> Untuk Sinyal Penutupan
-    - cron: '30 9 * * 1-5'
+    - cron: '15 2 * * 1-5' # Pagi (09:15 WIB)
+    - cron: '30 9 * * 1-5' # Sore (16:30 WIB)
   workflow_dispatch:
 
 jobs:
