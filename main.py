@@ -112,7 +112,7 @@ def detect_candlestick_pattern(df):
 
 
 def analyze_stock_pro(ticker, is_market_healthy):
-    """Otak algoritma pencari sinyal Buy/Sell + Candlestick"""
+    """Otak algoritma pencari sinyal 'Sniper' (Potensi Sangat Tinggi)"""
     df = yf.Ticker(ticker).history(period="6mo")
     if df.empty or len(df) < 50: return None
 
@@ -122,8 +122,12 @@ def analyze_stock_pro(ticker, is_market_healthy):
     df.ta.ema(length=20, append=True)
     df.ta.ema(length=50, append=True)
     df.ta.atr(length=14, append=True)
+    df.ta.adx(length=14, append=True) # Indikator Kekuatan Tren Baru!
     
-    # --- DETEKSI POLA CANDLESTICK ---
+    # Hitung Rata-rata Volume 20 Hari
+    df['Vol_SMA20'] = df['Volume'].rolling(window=20).mean()
+    
+    # Deteksi Pola Candlestick
     candlestick_pattern = detect_candlestick_pattern(df)
     
     last = df.iloc[-1]
@@ -135,14 +139,21 @@ def analyze_stock_pro(ticker, is_market_healthy):
     ema20 = last['EMA_20']
     ema50 = last['EMA_50']
     atr = last['ATRr_14']
+    adx = last['ADX_14']
+    vol_today = last['Volume']
+    vol_sma20 = last['Vol_SMA20']
 
+    # --- FILTER KETAT "SNIPER" ---
     is_uptrend = ema20 > ema50
     is_momentum_up = macd > macd_signal
+    is_trend_strong = adx > 20                      # Tren benar-benar sedang melaju
+    is_rsi_ideal = 40 < rsi < 65                    # Harga sedang di zona pantulan ideal
+    is_vol_spike = vol_today > (vol_sma20 * 1.2)    # Volume meledak 20% di atas rata-rata!
     
     signal_msg = None
     
-    # --- LOGIKA BUY ---
-    if is_uptrend and is_momentum_up and rsi < 65:
+    # --- LOGIKA BUY (SUPER KETAT) ---
+    if is_uptrend and is_momentum_up and is_trend_strong and is_rsi_ideal and is_vol_spike:
         if not is_market_healthy:
             return None 
             
@@ -150,16 +161,15 @@ def analyze_stock_pro(ticker, is_market_healthy):
         take_profit = price + (3.0 * atr)
         days = math.ceil((take_profit - price) / atr)
         
-        # Tambahkan teks Pola Candlestick ke pesan Telegram
-        signal_msg = (f"🟢 *STRONG BUY* : {ticker}\n\n"
+        signal_msg = (f"🎯 *SNIPER BUY* : {ticker}\n\n"
                       f"🏷 Harga: `{price:.2f}`\n"
                       f"🎯 TP: `{take_profit:.2f}`\n"
                       f"🛑 SL: `{stop_loss:.2f}`\n"
                       f"⏳ Waktu: `~{days} Hari Kerja`\n"
                       f"🕯️ *Pola Candle:* {candlestick_pattern}\n"
-                      f"📈 *(Garis Biru EMA20 > Oranye EMA50)*")
+                      f"🔥 *Katalis:* Ledakan Volume & Tren Kuat (ADX > 20)")
 
-    # --- LOGIKA SELL ---
+    # --- LOGIKA SELL (Amankan Uang) ---
     elif (ema20 < ema50) or rsi > 75:
         alasan = "Overbought (RSI > 75)" if rsi > 75 else "Patah Tren (EMA 20 < EMA 50)"
         signal_msg = (f"🔴 *SELL WARNING* : {ticker}\n\n"
@@ -178,41 +188,6 @@ def analyze_stock_pro(ticker, is_market_healthy):
         
     return None
 
-    
-    # --- LOGIKA BUY ---
-    if is_uptrend and is_momentum_up and rsi < 65:
-        if not is_market_healthy:
-            return None # Batalkan BUY jika IHSG sedang Downtrend (Bahaya)
-            
-        stop_loss = price - (1.5 * atr)
-        take_profit = price + (3.0 * atr)
-        days = math.ceil((take_profit - price) / atr)
-        
-        signal_msg = (f"🟢 *STRONG BUY* : {ticker}\n\n"
-                      f"🏷 Harga: `{price:.2f}`\n"
-                      f"🎯 TP: `{take_profit:.2f}`\n"
-                      f"🛑 SL: `{stop_loss:.2f}`\n"
-                      f"⏳ Waktu: `~{days} Hari Kerja`\n"
-                      f"📈 *(Garis Biru EMA20 > Oranye EMA50)*")
-
-    # --- LOGIKA SELL ---
-    elif (ema20 < ema50) or rsi > 75:
-        alasan = "Overbought (RSI > 75)" if rsi > 75 else "Patah Tren (EMA 20 < EMA 50)"
-        signal_msg = (f"🔴 *SELL WARNING* : {ticker}\n\n"
-                      f"🏷 Harga: `{price:.2f}`\n"
-                      f"⚠️ Alasan: {alasan}\n"
-                      f"💡 Segera amankan profit / cut loss.")
-                      
-    # Jika sinyal terbentuk, buatkan chart-nya
-    if signal_msg:
-        try:
-            chart_file = create_chart(df, ticker)
-            return {"message": signal_msg, "chart": chart_file}
-        except Exception as e:
-            print(f"Gagal membuat chart untuk {ticker}: {e}")
-            return None
-        
-    return None
 
 if __name__ == "__main__":
     # 1. Deteksi Sesi (Pagi/Sore) berdasarkan Jam Server UTC
