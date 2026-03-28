@@ -66,8 +66,53 @@ def create_chart(df, ticker):
     )
     return filename
 
+def detect_candlestick_pattern(df):
+    """Mendeteksi 4 Pola Candlestick Reversal Akurasi Tinggi pada 2 hari terakhir"""
+    # Ambil data 2 hari terakhir
+    curr = df.iloc[-1]  # Hari ini
+    prev = df.iloc[-2]  # Kemarin
+
+    # Ukuran Candle Hari Ini
+    c_O, c_H, c_L, c_C = curr['Open'], curr['High'], curr['Low'], curr['Close']
+    c_body = abs(c_C - c_O)
+    c_upper_wick = c_H - max(c_O, c_C)
+    c_lower_wick = min(c_O, c_C) - c_L
+    c_is_green = c_C > c_O
+    c_is_red = c_C < c_O
+
+    # Ukuran Candle Kemarin
+    p_O, p_H, p_L, p_C = prev['Open'], prev['High'], prev['Low'], prev['Close']
+    p_is_red = p_C < p_O
+    p_is_green = p_C > p_O
+
+    pola = []
+
+    # 1. Bullish Engulfing (Hijau menelan Merah)
+    if p_is_red and c_is_green and c_C > p_O and c_O < p_C:
+        pola.append("Bullish Engulfing 🚀")
+
+    # 2. Bearish Engulfing (Merah menelan Hijau)
+    if p_is_green and c_is_red and c_C < p_O and c_O > p_C:
+        pola.append("Bearish Engulfing 🩸")
+
+    # 3. Hammer / Bullish Pin Bar (Penolakan Harga Bawah)
+    # Syarat: Ekor bawah 2x lebih panjang dari body, ekor atas sangat pendek
+    if c_lower_wick > (2 * c_body) and c_upper_wick < (0.5 * c_body):
+        pola.append("Hammer (Rejeksi Bawah) 🔨")
+
+    # 4. Shooting Star / Bearish Pin Bar (Penolakan Harga Atas)
+    # Syarat: Ekor atas 2x lebih panjang dari body, ekor bawah sangat pendek
+    if c_upper_wick > (2 * c_body) and c_lower_wick < (0.5 * c_body):
+        pola.append("Shooting Star (Rejeksi Atas) 🌠")
+
+    if not pola:
+        return "Normal / Netral 🕯️"
+    
+    return " & ".join(pola)
+
+
 def analyze_stock_pro(ticker, is_market_healthy):
-    """Otak algoritma pencari sinyal Buy/Sell"""
+    """Otak algoritma pencari sinyal Buy/Sell + Candlestick"""
     df = yf.Ticker(ticker).history(period="6mo")
     if df.empty or len(df) < 50: return None
 
@@ -77,6 +122,9 @@ def analyze_stock_pro(ticker, is_market_healthy):
     df.ta.ema(length=20, append=True)
     df.ta.ema(length=50, append=True)
     df.ta.atr(length=14, append=True)
+    
+    # --- DETEKSI POLA CANDLESTICK ---
+    candlestick_pattern = detect_candlestick_pattern(df)
     
     last = df.iloc[-1]
     
@@ -88,11 +136,48 @@ def analyze_stock_pro(ticker, is_market_healthy):
     ema50 = last['EMA_50']
     atr = last['ATRr_14']
 
-    # Syarat Tren
     is_uptrend = ema20 > ema50
     is_momentum_up = macd > macd_signal
     
     signal_msg = None
+    
+    # --- LOGIKA BUY ---
+    if is_uptrend and is_momentum_up and rsi < 65:
+        if not is_market_healthy:
+            return None 
+            
+        stop_loss = price - (1.5 * atr)
+        take_profit = price + (3.0 * atr)
+        days = math.ceil((take_profit - price) / atr)
+        
+        # Tambahkan teks Pola Candlestick ke pesan Telegram
+        signal_msg = (f"🟢 *STRONG BUY* : {ticker}\n\n"
+                      f"🏷 Harga: `{price:.2f}`\n"
+                      f"🎯 TP: `{take_profit:.2f}`\n"
+                      f"🛑 SL: `{stop_loss:.2f}`\n"
+                      f"⏳ Waktu: `~{days} Hari Kerja`\n"
+                      f"🕯️ *Pola Candle:* {candlestick_pattern}\n"
+                      f"📈 *(Garis Biru EMA20 > Oranye EMA50)*")
+
+    # --- LOGIKA SELL ---
+    elif (ema20 < ema50) or rsi > 75:
+        alasan = "Overbought (RSI > 75)" if rsi > 75 else "Patah Tren (EMA 20 < EMA 50)"
+        signal_msg = (f"🔴 *SELL WARNING* : {ticker}\n\n"
+                      f"🏷 Harga: `{price:.2f}`\n"
+                      f"⚠️ Alasan: {alasan}\n"
+                      f"🕯️ *Pola Candle:* {candlestick_pattern}\n"
+                      f"💡 Segera amankan profit / cut loss.")
+                      
+    if signal_msg:
+        try:
+            chart_file = create_chart(df, ticker)
+            return {"message": signal_msg, "chart": chart_file}
+        except Exception as e:
+            print(f"Gagal membuat chart untuk {ticker}: {e}")
+            return None
+        
+    return None
+
     
     # --- LOGIKA BUY ---
     if is_uptrend and is_momentum_up and rsi < 65:
